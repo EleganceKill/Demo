@@ -1,13 +1,18 @@
 package com.aserbao.aserbaosandroid.functions.database.greenDao.db;
 
+import java.util.List;
+import java.util.ArrayList;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteStatement;
 
 import org.greenrobot.greendao.AbstractDao;
 import org.greenrobot.greendao.Property;
+import org.greenrobot.greendao.internal.SqlUtils;
 import org.greenrobot.greendao.internal.DaoConfig;
 import org.greenrobot.greendao.database.Database;
 import org.greenrobot.greendao.database.DatabaseStatement;
+
+import com.benq.demofashion.model.IdCard;
 
 import com.benq.demofashion.model.Student;
 
@@ -35,6 +40,8 @@ public class StudentDao extends AbstractDao<Student, Long> {
         public final static Property Grade = new Property(8, String.class, "grade", false, "GRADE");
     }
 
+    private DaoSession daoSession;
+
 
     public StudentDao(DaoConfig config) {
         super(config);
@@ -42,6 +49,7 @@ public class StudentDao extends AbstractDao<Student, Long> {
     
     public StudentDao(DaoConfig config, DaoSession daoSession) {
         super(config, daoSession);
+        this.daoSession = daoSession;
     }
 
     /** Creates the underlying database table. */
@@ -53,7 +61,7 @@ public class StudentDao extends AbstractDao<Student, Long> {
                 "\"AGE\" INTEGER NOT NULL ," + // 2: age
                 "\"TEL_PHONE\" TEXT," + // 3: telPhone
                 "\"SEX\" TEXT," + // 4: sex
-                "\"NAME\" TEXT," + // 5: name
+                "\"NAME\" TEXT NOT NULL ," + // 5: name
                 "\"ADDRESS\" TEXT," + // 6: address
                 "\"SCHOOL_NAME\" TEXT," + // 7: schoolName
                 "\"GRADE\" TEXT);"); // 8: grade
@@ -85,11 +93,7 @@ public class StudentDao extends AbstractDao<Student, Long> {
         if (sex != null) {
             stmt.bindString(5, sex);
         }
- 
-        String name = entity.getName();
-        if (name != null) {
-            stmt.bindString(6, name);
-        }
+        stmt.bindString(6, entity.getName());
  
         String address = entity.getAddress();
         if (address != null) {
@@ -127,11 +131,7 @@ public class StudentDao extends AbstractDao<Student, Long> {
         if (sex != null) {
             stmt.bindString(5, sex);
         }
- 
-        String name = entity.getName();
-        if (name != null) {
-            stmt.bindString(6, name);
-        }
+        stmt.bindString(6, entity.getName());
  
         String address = entity.getAddress();
         if (address != null) {
@@ -150,6 +150,12 @@ public class StudentDao extends AbstractDao<Student, Long> {
     }
 
     @Override
+    protected final void attachEntity(Student entity) {
+        super.attachEntity(entity);
+        entity.__setDaoSession(daoSession);
+    }
+
+    @Override
     public Long readKey(Cursor cursor, int offset) {
         return cursor.isNull(offset + 0) ? null : cursor.getLong(offset + 0);
     }    
@@ -162,7 +168,7 @@ public class StudentDao extends AbstractDao<Student, Long> {
             cursor.getInt(offset + 2), // age
             cursor.isNull(offset + 3) ? null : cursor.getString(offset + 3), // telPhone
             cursor.isNull(offset + 4) ? null : cursor.getString(offset + 4), // sex
-            cursor.isNull(offset + 5) ? null : cursor.getString(offset + 5), // name
+            cursor.getString(offset + 5), // name
             cursor.isNull(offset + 6) ? null : cursor.getString(offset + 6), // address
             cursor.isNull(offset + 7) ? null : cursor.getString(offset + 7), // schoolName
             cursor.isNull(offset + 8) ? null : cursor.getString(offset + 8) // grade
@@ -177,7 +183,7 @@ public class StudentDao extends AbstractDao<Student, Long> {
         entity.setAge(cursor.getInt(offset + 2));
         entity.setTelPhone(cursor.isNull(offset + 3) ? null : cursor.getString(offset + 3));
         entity.setSex(cursor.isNull(offset + 4) ? null : cursor.getString(offset + 4));
-        entity.setName(cursor.isNull(offset + 5) ? null : cursor.getString(offset + 5));
+        entity.setName(cursor.getString(offset + 5));
         entity.setAddress(cursor.isNull(offset + 6) ? null : cursor.getString(offset + 6));
         entity.setSchoolName(cursor.isNull(offset + 7) ? null : cursor.getString(offset + 7));
         entity.setGrade(cursor.isNull(offset + 8) ? null : cursor.getString(offset + 8));
@@ -208,4 +214,97 @@ public class StudentDao extends AbstractDao<Student, Long> {
         return true;
     }
     
+    private String selectDeep;
+
+    protected String getSelectDeep() {
+        if (selectDeep == null) {
+            StringBuilder builder = new StringBuilder("SELECT ");
+            SqlUtils.appendColumns(builder, "T", getAllColumns());
+            builder.append(',');
+            SqlUtils.appendColumns(builder, "T0", daoSession.getIdCardDao().getAllColumns());
+            builder.append(" FROM STUDENT T");
+            builder.append(" LEFT JOIN ID_CARD T0 ON T.\"NAME\"=T0.\"USER_NAME\"");
+            builder.append(' ');
+            selectDeep = builder.toString();
+        }
+        return selectDeep;
+    }
+    
+    protected Student loadCurrentDeep(Cursor cursor, boolean lock) {
+        Student entity = loadCurrent(cursor, 0, lock);
+        int offset = getAllColumns().length;
+
+        IdCard student = loadCurrentOther(daoSession.getIdCardDao(), cursor, offset);
+         if(student != null) {
+            entity.setStudent(student);
+        }
+
+        return entity;    
+    }
+
+    public Student loadDeep(Long key) {
+        assertSinglePk();
+        if (key == null) {
+            return null;
+        }
+
+        StringBuilder builder = new StringBuilder(getSelectDeep());
+        builder.append("WHERE ");
+        SqlUtils.appendColumnsEqValue(builder, "T", getPkColumns());
+        String sql = builder.toString();
+        
+        String[] keyArray = new String[] { key.toString() };
+        Cursor cursor = db.rawQuery(sql, keyArray);
+        
+        try {
+            boolean available = cursor.moveToFirst();
+            if (!available) {
+                return null;
+            } else if (!cursor.isLast()) {
+                throw new IllegalStateException("Expected unique result, but count was " + cursor.getCount());
+            }
+            return loadCurrentDeep(cursor, true);
+        } finally {
+            cursor.close();
+        }
+    }
+    
+    /** Reads all available rows from the given cursor and returns a list of new ImageTO objects. */
+    public List<Student> loadAllDeepFromCursor(Cursor cursor) {
+        int count = cursor.getCount();
+        List<Student> list = new ArrayList<Student>(count);
+        
+        if (cursor.moveToFirst()) {
+            if (identityScope != null) {
+                identityScope.lock();
+                identityScope.reserveRoom(count);
+            }
+            try {
+                do {
+                    list.add(loadCurrentDeep(cursor, false));
+                } while (cursor.moveToNext());
+            } finally {
+                if (identityScope != null) {
+                    identityScope.unlock();
+                }
+            }
+        }
+        return list;
+    }
+    
+    protected List<Student> loadDeepAllAndCloseCursor(Cursor cursor) {
+        try {
+            return loadAllDeepFromCursor(cursor);
+        } finally {
+            cursor.close();
+        }
+    }
+    
+
+    /** A raw-style query where you can pass any WHERE clause and arguments. */
+    public List<Student> queryDeep(String where, String... selectionArg) {
+        Cursor cursor = db.rawQuery(getSelectDeep() + where, selectionArg);
+        return loadDeepAllAndCloseCursor(cursor);
+    }
+ 
 }

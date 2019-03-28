@@ -37,5 +37,11 @@ dependencies {
     androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.2'
     // https://mvnrepository.com/artifact/org.greenrobot/greendao
     implementation group: 'org.greenrobot', name: 'greendao', version: '3.2.2'
+    // https://mvnrepository.com/artifact/org.apache.poi/poi
+/*    implementation group: 'org.apache.poi', name: 'poi', version: '4.0.1'
+    // https://mvnrepository.com/artifact/org.apache.poi/poi-ooxml
+    implementation group: 'org.apache.poi', name: 'poi-ooxml', version: '4.0.1'
+    // https://mvnrepository.com/artifact/org.apache.poi/poi-scratchpad
+    implementation group: 'org.apache.poi', name: 'poi-scratchpad', version: '4.0.1'*/
 
 }
